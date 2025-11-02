@@ -2,6 +2,10 @@
 
 MCP Server for the HubSpot API, enabling Claude to interact with HubSpot CRM for sales analysis and insights.
 
+<a href="https://glama.ai/mcp/servers/@scopiousdigital/hubspot-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@scopiousdigital/hubspot-mcp/badge" alt="HubSpot Server MCP server" />
+</a>
+
 > #### Disclaimer
 >
 > This open-source project is not affiliated with or endorsed by HubSpot. It is an independent implementation that interacts with HubSpot's API.
