@@ -171,29 +171,32 @@ MCP Server for the HubSpot API, enabling Claude to interact with HubSpot CRM for
 
 ## Setup
 
-1. Create a HubSpot Private App:
+Create a [HubSpot service key](https://developers.hubspot.com/docs/apps/developer-platform/build-apps/authentication/account-service-keys) and set it as `HUBSPOT_API_KEY`. HubSpot authenticates service keys as a bearer token (`Authorization: Bearer <key>`). This server passes `HUBSPOT_API_KEY` to the HubSpot client, which sends it in that header.
 
-   - Go to your HubSpot account
-   - Navigate to Settings → Account Setup → Integrations → Private Apps
-   - Click "Create private app"
-   - Name your app and set appropriate scopes (contacts, deals, and companies)
-   - Create the app and copy your private app token
+You must be a Super Admin, or have the Developer tools access permission, to create a key. A key can only be granted scopes you already have.
 
-2. Required Scopes:
+1. Create a service key:
+
+   - In your HubSpot account, open **Development**
+   - In the left sidebar, open **Keys → Service keys**. HubSpot's [private app sunset](https://developers.hubspot.com/changelog/legacy-private-app-creation-sunset) also points here from **Settings → Integrations → Service Keys**
+   - Click **Create service key** and enter a name
+   - Click **Add new scope**. In the right panel, select each scope below. Use **Find a scope** to search by name
+   - Click **Update**, review the list, then click **Create** and confirm
+   - Open the new key, click **Show**, then **Copy**
+
+2. Required scopes:
+
+   These match the CRM calls this server makes. Notes, calls, meetings, and tasks are read with `crm.objects.contacts.read`. Deal pipeline analytics is covered by `crm.objects.deals.read`.
+
    - `crm.objects.contacts.read`
    - `crm.objects.contacts.write`
+   - `crm.objects.companies.read`
    - `crm.objects.deals.read`
    - `crm.objects.deals.write`
-   - `crm.objects.companies.read`
-   - `crm.objects.companies.write`
    - `crm.objects.owners.read`
-   - `crm.objects.quotes.read`
-   - `crm.objects.line_items.read`
-   - `crm.objects.custom.read`
-   - `crm.schemas.deals.read`
-   - `crm.schemas.contacts.read`
-   - `crm.schemas.companies.read`
-   - `crm.schemas.custom.read`
+   - `sales-email-read` (one-to-one email content, such as `hs_email_text`)
+
+Existing legacy private app tokens still work in `HUBSPOT_API_KEY` until September 2027. HubSpot stopped new legacy private app creation on 28 September 2026 for new accounts and on 26 October 2026 for existing accounts, and [legacy private apps become unsupported in September 2027](https://developers.hubspot.com/changelog/legacy-apis-and-legacy-apps-whats-going-unsupported-and-when). New setups should use a service key.
 
 ### Usage with Claude Desktop
 
@@ -208,7 +211,7 @@ Add the following to your `claude_desktop_config.json`:
       "command": "npx",
       "args": ["-y", "@scopiousdigital/server-hubspot"],
       "env": {
-        "HUBSPOT_API_KEY": "your-api-key-here"
+        "HUBSPOT_API_KEY": "your-service-key"
       }
     }
   }
@@ -224,20 +227,23 @@ Add the following to your `claude_desktop_config.json`:
       "command": "docker",
       "args": ["run", "-i", "--rm", "-e", "HUBSPOT_API_KEY", "mcp/hubspot"],
       "env": {
-        "HUBSPOT_API_KEY": "your-api-key-here"
+        "HUBSPOT_API_KEY": "your-service-key"
       }
     }
   }
 }
 ```
 
+Paste the copied service key (or an existing legacy private app token) as the value of `HUBSPOT_API_KEY`.
+
 ### Troubleshooting
 
 If you encounter errors, verify that:
 
-1. All required scopes are added to your HubSpot private app
-2. The API key is correctly copied to your configuration
+1. Every scope listed above is on the service key
+2. `HUBSPOT_API_KEY` is the key value from **Show**, not the key's name
 3. Your HubSpot plan includes access to the APIs you're trying to use
+4. The user who created the key already had those scopes
 
 ## Build
 
