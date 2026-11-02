@@ -206,7 +206,7 @@ Add the following to your `claude_desktop_config.json`:
   "mcpServers": {
     "hubspot": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-hubspot"],
+      "args": ["-y", "@scopiousdigital/server-hubspot"],
       "env": {
         "HUBSPOT_API_KEY": "your-api-key-here"
       }
@@ -250,3 +250,5 @@ docker build -t mcp/hubspot -f Dockerfile .
 ## License
 
 This MCP server is licensed under the MIT License. This means you are free to use, modify, and distribute the software, subject to the terms and conditions of the MIT License. For more details, please see the LICENSE file in the project repository.
+
+Maintained by [Scopious Digital](https://www.scopiousdigital.com/?utm_source=github&utm_medium=readme&utm_campaign=hubspot-mcp). We build HubSpot integrations and white-label dev for HubSpot agencies.
