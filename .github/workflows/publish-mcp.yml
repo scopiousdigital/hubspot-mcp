@@ -1,11 +1,10 @@
-name: Publish to MCP Registry
+name: Publish to npm and the MCP Registry
 
-# Publishes server.json to the official MCP Registry. It does not publish
-# the npm package. The npm version named in server.json must already exist
-# and its package.json mcpName must equal server.json name.
+# There is no separate npm workflow in this repo. This one publishes
+# @scopiousdigital/server-hubspot with npm trusted publishing (OIDC,
+# provenance), waits until that version is live, then publishes server.json.
+# No NPM_TOKEN is used.
 on:
-  push:
-    tags: ["v*"]
   release:
     types: [published]
   workflow_dispatch:
@@ -15,7 +14,128 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  npm:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for npm trusted publishing
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          # release events otherwise check out the default branch, not the tag.
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
+
+      - name: Check versions agree
+        id: version
+        run: |
+          set -euo pipefail
+          server_name="$(jq -r '.name' server.json)"
+          server_version="$(jq -r '.version' server.json)"
+          package_version="$(jq -r '.packages[0].version' server.json)"
+          pkg_version="$(jq -r '.version' package.json)"
+          mcp_name="$(jq -r '.mcpName' package.json)"
+          if [ "$server_version" != "$package_version" ] || [ "$server_version" != "$pkg_version" ]; then
+            echo "Version mismatch: server.json ${server_version}, package entry ${package_version}, package.json ${pkg_version}."
+            exit 1
+          fi
+          if [ "$mcp_name" != "$server_name" ]; then
+            echo "package.json mcpName '${mcp_name}' does not match server.json name '${server_name}'."
+            exit 1
+          fi
+          if [ "${{ github.event_name }}" = "release" ]; then
+            tag="${{ github.event.release.tag_name }}"
+            tag_version="${tag#v}"
+            if [ "$tag_version" != "$pkg_version" ]; then
+              echo "Release tag ${tag} does not match package.json version ${pkg_version}."
+              exit 1
+            fi
+          fi
+          echo "version=${pkg_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether this npm version is already live
+        id: npm
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
+
+          with open("package.json", encoding="utf-8") as handle:
+              package_json = json.load(handle)
+          with open("server.json", encoding="utf-8") as handle:
+              server = json.load(handle)
+
+          identifier = server["packages"][0]["identifier"]
+          version = package_json["version"]
+          expected = server["name"]
+          url = f"https://registry.npmjs.org/{identifier}/{version}"
+          request = urllib.request.Request(url, headers={"Accept": "application/json"})
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  published = json.load(response)
+          except urllib.error.HTTPError as error:
+              if error.code == 404:
+                  print(f"{identifier}@{version} is not on npm yet.")
+                  with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+                      output.write("skip=false\n")
+                  sys.exit(0)
+              print(f"npm lookup for {identifier}@{version} failed with HTTP {error.code}.")
+              sys.exit(1)
+
+          actual = published.get("mcpName")
+          if actual != expected:
+              print(f"npm {identifier}@{version} is already published with mcpName {actual!r}, expected {expected!r}.")
+              print("That tarball cannot be edited. Bump the version and publish again.")
+              sys.exit(1)
+          print(f"{identifier}@{version} is already live with the expected mcpName. Skipping npm publish.")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("skip=true\n")
+          PY
+
+      - name: Set up Node.js
+        if: steps.npm.outputs.skip != 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Require npm trusted-publishing CLI
+        if: steps.npm.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+          import sys
+
+          version = subprocess.check_output(["npm", "--version"], text=True).strip()
+          parts = [int(piece) for piece in version.split(".")[:3]]
+          if parts < [11, 5, 1]:
+              print(f"npm {version} is older than 11.5.1, which trusted publishing requires.")
+              sys.exit(1)
+          print(f"npm {version}")
+          PY
+
+      - name: Install dependencies
+        if: steps.npm.outputs.skip != 'true'
+        run: npm ci
+
+      - name: Build package
+        if: steps.npm.outputs.skip != 'true'
+        run: npm run build --if-present
+
+      - name: Publish package to npm
+        if: steps.npm.outputs.skip != 'true'
+        run: npm publish --access public --provenance
+
+  registry:
+    needs: npm
     runs-on: ubuntu-latest
     permissions:
       id-token: write # Required for OIDC authentication
@@ -25,12 +145,10 @@ jobs:
       # v1.8.9 is the registry release current as of 2026-11-10. Do not switch
       # this back to the mutable releases/latest URL.
       MCP_PUBLISHER_VERSION: v1.8.9
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
-          # release events otherwise check out the default branch, not the tag.
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
 
       - name: Check whether this version is already published
@@ -39,6 +157,10 @@ jobs:
           set -euo pipefail
           name="$(jq -r '.name' server.json)"
           version="$(jq -r '.version' server.json)"
+          if [ "$version" != "${{ needs.npm.outputs.version }}" ]; then
+            echo "Checked out server.json ${version} does not match the npm job version ${{ needs.npm.outputs.version }}."
+            exit 1
+          fi
           encoded="$(jq -rn --arg n "$name" '$n|@uri')"
           url="https://registry.modelcontextprotocol.io/v0.1/servers/${encoded}/versions/${version}"
           code="$(curl --silent --show-error --output /tmp/mcp-server-version.json --write-out '%{http_code}' --max-time 30 "$url" || true)"
@@ -56,32 +178,14 @@ jobs:
               ;;
           esac
 
-      - name: Check server.json matches package.json
-        if: steps.published.outputs.already != 'true'
-        run: |
-          set -euo pipefail
-          server_name="$(jq -r '.name' server.json)"
-          server_version="$(jq -r '.version' server.json)"
-          package_version="$(jq -r '.packages[0].version' server.json)"
-          package_json_version="$(jq -r '.version' package.json)"
-          mcp_name="$(jq -r '.mcpName' package.json)"
-          if [ "$server_version" != "$package_version" ] || [ "$server_version" != "$package_json_version" ]; then
-            echo "Version mismatch: server.json ${server_version}, package entry ${package_version}, package.json ${package_json_version}."
-            echo "Keep all three the same, then publish that version to npm before this workflow."
-            exit 1
-          fi
-          if [ "$mcp_name" != "$server_name" ]; then
-            echo "package.json mcpName '${mcp_name}' does not match server.json name '${server_name}'."
-            exit 1
-          fi
-
-      - name: Check published npm package ownership metadata
+      - name: Wait for the npm version to go live
         if: steps.published.outputs.already != 'true'
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json
           import sys
+          import time
           import urllib.error
           import urllib.request
 
@@ -93,24 +197,27 @@ jobs:
           version = package["version"]
           expected = server["name"]
           url = f"https://registry.npmjs.org/{identifier}/{version}"
-          request = urllib.request.Request(url, headers={"Accept": "application/json"})
-          try:
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  published = json.load(response)
-          except urllib.error.HTTPError as error:
-              print(f"npm package {identifier}@{version} is not published (HTTP {error.code}).")
-              print("Publish that version, with mcpName set, before this workflow.")
-              print("npm will not accept a republish of a version that is already live.")
-              sys.exit(1)
+          deadline = time.time() + 300
 
-          actual = published.get("mcpName")
-          if actual != expected:
-              print(f"Published {identifier}@{version} mcpName is {actual!r}, expected {expected!r}.")
-              print("That tarball cannot be edited. Publish a new npm version that includes mcpName,")
-              print("set server.json version and packages[0].version to that same version, then rerun.")
-              sys.exit(1)
+          while True:
+              request = urllib.request.Request(url, headers={"Accept": "application/json"})
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      published = json.load(response)
+              except urllib.error.HTTPError as error:
+                  if error.code != 404 or time.time() > deadline:
+                      print(f"npm {identifier}@{version} is not live (HTTP {error.code}).")
+                      sys.exit(1)
+                  print(f"Waiting for {identifier}@{version} to appear on npm.")
+                  time.sleep(10)
+                  continue
 
-          print(f"{identifier}@{version} mcpName matches {expected}.")
+              actual = published.get("mcpName")
+              if actual != expected:
+                  print(f"Published {identifier}@{version} mcpName is {actual!r}, expected {expected!r}.")
+                  sys.exit(1)
+              print(f"{identifier}@{version} is live and mcpName matches {expected}.")
+              sys.exit(0)
           PY
 
       - name: Install cosign
