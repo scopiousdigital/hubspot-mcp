@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.scopiousdigital/hubspot-mcp",
+  "title": "HubSpot MCP Server",
+  "description": "MCP server for HubSpot CRM contacts, companies, deals, and sales analytics.",
+  "repository": {
+    "url": "https://github.com/scopiousdigital/hubspot-mcp",
+    "source": "github",
+    "id": "955304912"
+  },
+  "version": "1.0.4",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@scopiousdigital/server-hubspot",
+      "version": "1.0.4",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "HUBSPOT_API_KEY",
+          "description": "HubSpot service key, sent as a bearer token",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,12 @@ MCP Server for the HubSpot API, enabling Claude to interact with HubSpot CRM for
 >
 > This open-source project is not affiliated with or endorsed by HubSpot. It is an independent implementation that interacts with HubSpot's API.
 
+## Install from the MCP registry
+
+Clients that support the [MCP Registry](https://registry.modelcontextprotocol.io) can install `io.github.scopiousdigital/hubspot-mcp`. That entry runs the npm package `@scopiousdigital/server-hubspot` over stdio. Set `HUBSPOT_API_KEY` as described in [Setup](#setup).
+
+Need a custom HubSpot MCP server? [Scopious Digital builds them](https://www.scopiousdigital.com/services/hubspot-mcp).
+
 ## Tools
 
 ### Core CRM Tools

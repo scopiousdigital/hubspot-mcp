@@ -1,6 +1,7 @@
 {
   "name": "@scopiousdigital/server-hubspot",
   "version": "1.0.4",
+  "mcpName": "io.github.scopiousdigital/hubspot-mcp",
   "description": "MCP server for interacting with HubSpot",
   "type": "module",
   "bin": {
